@@ -1,0 +1,15 @@
+{
+    "$schema": "https://json.schemastore.org/tsconfig",
+    "compilerOptions": {
+        "lib": ["esnext", "DOM"],
+        "esModuleInterop": true,
+        "forceConsistentCasingInFileNames": true,
+        "module": "esnext",
+        "moduleResolution": "bundler",
+        "strict": true,
+        "resolveJsonModule": true,
+        "isolatedModules": true,
+        "baseUrl": "./src"
+    },
+    "exclude": ["node_modules"]
+}
