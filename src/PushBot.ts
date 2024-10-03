@@ -1,6 +1,6 @@
 import { PushAPI, SignerType, PushAPIInitializeProps, Message, CONSTANTS } from "@pushprotocol/restapi";
 import { PushStream } from "@pushprotocol/restapi/src/lib/pushstream/PushStream";
-import { ChatEvent, ChatMessage, CommandHandler, Scope } from "types";
+import { ChatEvent, ChatMessage, CommandHandler, Scope, ScopeData } from "types";
 import { createLogger, Logger } from "winston";
 import Keyv, { KeyvOptions } from "keyv";
 import { MessageType } from "@pushprotocol/restapi/src/lib/constants";
@@ -39,12 +39,8 @@ class Router {
 
     route(event: ChatEvent<any>): Command | undefined {
         // Router can only route chat messages
-        console.log("handling event", event);
         if (event.event === "chat.message") {
             const chat = event as ChatMessage;
-            console.log("handling chat", chat);
-            console.log("handling chat message", chat.message);
-            console.log("handling chat message type", chat.message.type);
             console.log("handling chat message content", chat.message.content);
             if (chat.message.type === MessageType.TEXT && typeof chat.message.content === "string") {
                 return this._commands.find((command) => command.match(chat.message.content as string));
@@ -66,19 +62,19 @@ class ScopeStore {
         this._keyv = new Keyv({ ttl: DEFAULT_SCOPE_TTL, ...options?.keyvOptions });
     }
 
-    async get(key: string): Promise<Scope | undefined> {
-        return await this._keyv.get<Scope>(key);
+    async get(key: string): Promise<ScopeData | undefined> {
+        return await this._keyv.get<ScopeData>(key);
     }
 
-    async store(scope: Scope) {
+    async store(scope: ScopeData) {
         await this._keyv.set(ScopeStore._key(scope), scope);
     }
 
-    async delete(scope: Pick<Scope, "chatId" | "from">) {
+    async delete(scope: Pick<ScopeData, "chatId" | "from">) {
         await this._keyv.delete(ScopeStore._key(scope));
     }
 
-    static _key(scope: Pick<Scope, "chatId" | "from">): string {
+    static _key(scope: Pick<ScopeData, "chatId" | "from">): string {
         return `${scope.chatId}:${scope.from}`;
     }
 }
@@ -108,45 +104,54 @@ class Processor {
     }
 
     async process(chatId: string, event: ChatEvent<any>) {
-        this._logger?.debug("Processing chat message", { chat: chatId, event: event.event, from: event.from });
-        let scope = await this._scopeStore.get(ScopeStore._key({ chatId: chatId, from: event.from }));
-        let command: Command | undefined;
+        this._logger?.debug(`Processing chat message from ${event.from} on chat ${chatId}`);
 
-        if (scope) {
-            command = this._router.route(scope.events[0]);
+        //setup the scope wit a existing scope or create a new one
+        const scopeDataStored = await this._scopeStore.get(ScopeStore._key({ chatId: chatId, from: event.from }));
+        const scopeData = scopeDataStored
+            ? { ...scopeDataStored, event: event, events: [...scopeDataStored.events, event] }
+            : {
+                  chatId: chatId,
+                  from: event.from,
+                  event: event,
+                  events: [event],
+              };
+        let scope = this._scope(scopeData);
 
-            if (!command) {
-                this._logger?.warn("No command found for the message with existing scope", {
-                    chat: chatId,
-                    from: event.from,
-                    message: event.raw,
-                });
-                this._scopeStore.delete(scope);
-            }
-        } else {
-            command = this._router.route(event);
+        // Retrieve the command
+        const command = this._router.route(scope.events[0]);
+
+        // If there is a scope stored and no command found, delete the scope
+        if (scopeDataStored && !command) {
+            this._logger?.warn("No command found for the message with existing scope", {
+                chat: chatId,
+                from: event.from,
+                message: event.raw,
+            });
+            this._scopeStore.delete(scopeDataStored);
         }
 
+        // If there is a command, execute it
         if (command) {
-            scope = scope ?? this._scope(chatId, event);
-
             this._logger?.debug("Executing command", { chat: chatId, from: event.from, command: command.route });
             command.handler(scope);
+
+            if (scope.isDone) {
+                this._logger?.debug("Scope is done", { chat: chatId, from: event.from });
+                this._scopeStore.delete(scope);
+            } else {
+                this._storeScope(scope);
+            }
         }
     }
 
-    _scope(chatId: string, event: ChatEvent<any>): Scope {
+    _scope(scopeData: ScopeData): Scope {
         return {
-            chatId: chatId,
-            from: event.from,
-            event: event,
-            events: [event],
+            ...scopeData,
+            isDone: false,
             send: async (message: Message) => {
-                this._logger?.debug("Sending message", { chat: chatId, to: event.from, message: message });
-                return await this._push.chat.send(chatId, message);
-            },
-            end: () => {
-                this._scopeStore.delete({ chatId: chatId, from: event.from });
+                this._logger?.debug("Sending message", { chat: scopeData.chatId, to: scopeData.from, message: message.content });
+                return await this._push.chat.send(scopeData.chatId, message);
             },
         };
     }
@@ -177,7 +182,7 @@ class Processor {
  *
  *   bot.command(/\/ping/, ($: Scope) => {
  *     $.send({ type: "Text", content: "Pong!" });
- *     $.end();
+ *     $.isDone = true;
  *   });
  *
  *   // Start the bot

@@ -84,7 +84,7 @@ export type ChatReject = ChatEvent<"chat.reject">;
 export type ChatGroupParticipantRemove = ChatEvent<"chat.group.participant.remove">;
 export type ChatGroupParticipantJoin = ChatEvent<"chat.group.participant.join">;
 
-export type Scope = {
+export type ScopeData = {
     // the chat id
     chatId: string;
 
@@ -97,12 +97,16 @@ export type Scope = {
     // the event history related to the scope
     events: ChatEvent<any>[];
 
+    // the data related to the scope (optional if needed)
+    data?: any;
+};
+
+export type Scope = ScopeData & {
     // send a message to the chat
     send: (message: Message) => Promise<MessageWithCID>;
 
-    // continue the command processing
-    // call this function to continue the command processing, next message will be processed with the same command handler and scope
-    end: () => void;
+    // end the command by setting isDone to true
+    isDone: boolean;
 };
 
 export type CommandHandler = (scope: Scope) => void;

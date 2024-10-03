@@ -23,7 +23,7 @@ async function main() {
         $.send({ type: "Text", content: "Pong!" });
 
         // declare that the command is finished (no more event awaited)
-        $.end();
+        $.isDone = true;
     });
 
     // Start the bot
