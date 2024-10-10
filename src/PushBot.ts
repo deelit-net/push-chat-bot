@@ -228,10 +228,9 @@ export class PushBot {
         }
 
         this._stream.on(CONSTANTS.STREAM.CHAT, async (event: ChatEvent<any>) => {
-            this._logger?.debug("Received chat message", event);
+            this._logger?.debug("Received chat message", JSON.stringify({ event: event.event, chatId: event.chatId, from: event.from }));
             if (event.origin === "other") {
                 if (event.event === "chat.request" && options?.acceptRequests) {
-                    this._logger?.info("Received chat request", event);
                     const chatRequest = event as ChatEvent<"chat.request">;
                     await this._acceptRequest(chatRequest.from);
                 } else if (event.event === "chat.message") {

@@ -1,5 +1,20 @@
 import { Message, MessageWithCID } from "@pushprotocol/restapi";
 
+export type ChatHistory = {
+    fromCAIP10: string;
+    toCAIP10: string;
+    fromDID: string;
+    toDID: string;
+    messageType: string;
+    messageContent: string;
+    signature: string;
+    sigType: string;
+    link: string;
+    timestamp: number;
+    encType: string;
+    encryptedSecret: string;
+};
+
 export type ChatEventRawType = {
     fromCAIP10: string;
     toCAIP10: string;
@@ -9,7 +24,7 @@ export type ChatEventRawType = {
     encryptedSecret: string | null;
     signature: string;
     sigType: string;
-    verificationProof: string;
+    verificationProof: string | null;
     previousReference: string | null;
 };
 
@@ -22,10 +37,10 @@ export type ChatEventTypes =
     | "chat.group.participant.join"
     | "chat.group.participant.leave";
 
-export type ChatEvent<T extends ChatEventTypes> = {
+export type ChatEvent<T extends ChatEventTypes = ChatEventTypes> = {
     event: T;
     origin: "self" | "other";
-    timestamp: number;
+    timestamp: string;
     chatId: string;
     from: string;
 } & (T extends "chat.message"
